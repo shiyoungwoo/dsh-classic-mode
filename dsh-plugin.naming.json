@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "policy": "dsh-plugin-naming/v1",
+  "plugin": { "namespace": "local", "name": "classic-mode", "coordinate": "local/classic-mode", "packageName": "@local/dsh-classic-mode" },
+  "names": { "pluginNames": ["classic-mode"], "loaderIds": ["local-classic-mode"], "services": [], "tools": [], "commands": [], "skills": [], "skillProviders": [], "events": [], "settingsNamespaces": [], "routes": [{ "kind": "exact", "path": "/classic-mode/open" }] }
+}

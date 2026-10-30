@@ -1,0 +1,50 @@
+{
+  "name": "@local/dsh-classic-mode",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Sidebar button that opens the classic (DS-Bot-free) Harness UI in Safari, starting it when needed.",
+  "license": "MIT",
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "sidebar",
+    "classic-mode"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shiyoungwoo/dsh-classic-mode.git"
+  },
+  "homepage": "https://github.com/shiyoungwoo/dsh-classic-mode#readme",
+  "bugs": {
+    "url": "https://github.com/shiyoungwoo/dsh-classic-mode/issues"
+  },
+  "engines": {
+    "node": ">=22.19.0",
+    "dsh": ">=0.2.1-rc.3 <0.3.0"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "dsh-plugin.naming.json"
+  ],
+  "scripts": {
+    "check": "node --check index.js && node --check client.js"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [],
+      "immediately": true
+    }
+  }
+}

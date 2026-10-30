@@ -1,0 +1,14 @@
+# Add this layer to a profile that also has the classic profile available.
+# Replace each value with paths and settings from your machine.
+- insert:
+    - id: local-classic-mode
+      name: '@local/dsh-classic-mode'
+      config:
+        # Absolute path to the dsh launcher shipped with your installation.
+        cliPath: /path/to/dsh
+        # Profile that contains the classic, DS Bot-free composition.
+        profile: classic
+        # Keep this port free and use the same value for the classic server.
+        port: 3090
+        # macOS application name passed to `open -a`.
+        browser: Safari
