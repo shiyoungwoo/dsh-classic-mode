@@ -8,7 +8,7 @@ A DeepSeek Harness (DSH) bundle that adds a **Classic mode** button to the Web U
 
 DS Bot mode and classic Agent mode share one data directory (`~/.dsh`) but render different UIs. DS Bot mode has no right-hand sidebar, so UI work needs the classic shell; the classic shell needs a separate running instance. This bundle removes the manual step of starting that instance and pasting its tokenized URL into a browser.
 
-- **Host half** (`index.js`): reads `~/.dsh/classic-mode/state.json`, reuses a live process, otherwise spawns `dsh --profile <profile> --no-open --port <port>`, captures the `?token=` URL from its output, writes state, and opens the browser.
+- **Host half** (`index.js`): reads `~/.dsh/classic-mode/state.json`, reuses a live process started by this same host, otherwise spawns `dsh --profile <profile> --no-open --port <port>`, captures the `?token=` URL from its output, writes state, and opens the browser. It also stops a server left over from a previous host run (see [Stale instance cleanup](#stale-instance-cleanup)).
 - **Client half** (`client.js`): registers a button in the `sidebar.footer.action` slot using the official DeepSeek fish logo, matching the DS Bot entry. The button calls `GET /classic-mode/open`.
 
 ## Requirements
@@ -53,6 +53,17 @@ To keep machine paths out of the package, override the row in your own profile's
     browser: Safari
 ```
 
+## Stale instance cleanup
+
+The classic server is spawned detached, so it outlives the DSH host process that started it. After a DSH restart that leftover server still runs and still holds every Harness session it has open, so another DSH instance (the desktop app, another `dsh web`) reports those sessions as **already in use** until the leftover is gone.
+
+The plugin records the host process id in `state.json` and stops such a leftover in two places:
+
+- when the bundle loads in a host process that did not start it;
+- when the button is clicked and the recorded server belongs to an earlier host process.
+
+A process is only signalled when its command line carries this plugin's `profile` and `port` and names a DSH entry point; a stale pid that has been reused by an unrelated process is reported, not killed. A server started by the current host process is reused, never restarted.
+
 ## Security notes
 
 - `/classic-mode/open` answers before DSH Connection authentication, so it rejects any request whose `Origin` header does not match the serving host (cross-site requests).
@@ -71,6 +82,8 @@ To keep machine paths out of the package, override the row in your own profile's
 这个插件在 DSH 网页版侧栏加一个「经典模式」按钮。点击后：若 classic 实例未运行，就启动 `dsh --profile classic --no-open --port 3090`，从输出里取出带 token 的地址，再用 Safari 打开；已在运行则直接复用。
 
 配置项：`cliPath`（必填，dsh 启动器绝对路径）、`profile`（默认 `classic`）、`port`（默认 `3090`）、`browser`（默认 `Safari`）。仓库里的 `cordis.patch.yml` 只放占位值，请在你自己的 profile 补丁里按上面的 `id: local-classic-mode` 覆盖配置，避免把本机路径写进仓库。
+
+残留实例清理：classic 服务是 detached 启动的，会活过启动它的 DSH 进程。DSH 重启后，这个残留服务仍在运行，并继续占用它打开的 Harness 会话，其他 DSH 实例（桌面端、另一个 `dsh web`）就会报「当前会话已被占用」。插件在 `state.json` 里记录启动它的宿主进程 PID，并在两处清理这种残留：插件在新宿主进程加载时；以及点击按钮时发现记录的实例属于更早的宿主进程。只有命令行同时带本插件的 `profile`、`port` 且是 DSH 入口进程才会被终止；PID 被无关进程复用时只报告、不终止。当前宿主进程自己启动的实例始终复用，不重启。
 
 ## License
 

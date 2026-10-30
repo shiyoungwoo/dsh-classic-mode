@@ -6,6 +6,13 @@
 // server when it is not running, reads the tokenized URL from its output,
 // records it in state.json, and hands it to the browser. A later click reuses
 // the recorded URL while that server process is still alive.
+//
+// The classic server is detached, so it survives this host process. That is
+// wanted while the app runs and wrong after it restarts: the leftover server
+// keeps the Harness sessions it has open locked, and another DSH instance then
+// reports those sessions as already in use. `state.json` therefore records the
+// host process that started the server, and a click from a later host process
+// stops that leftover server before starting a fresh one.
 
 import { execFile, spawn } from 'node:child_process'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
@@ -29,8 +36,9 @@ const LOG_TAIL_LINES = 12
 /**
  * Read the recorded classic-server state.
  *
- * @returns {Promise<{ url: string, pid: number, startedAt: string } | null>}
- *   The last recorded state, or null when none was written yet.
+ * @returns {Promise<{ url: string, pid: number, hostPid?: number, startedAt: string } | null>}
+ *   The last recorded state, or null when none was written yet. Records written
+ *   before `hostPid` existed have no `hostPid`.
  */
 async function readState() {
   try {
@@ -46,7 +54,7 @@ async function readState() {
 /**
  * Record the state of the classic server this plugin started.
  *
- * @param {{ url: string, pid: number, startedAt: string }} state - What to persist.
+ * @param {{ url: string, pid: number, hostPid: number, startedAt: string }} state - What to persist.
  * @returns {Promise<void>} Resolves once the file is written.
  */
 async function writeState(state) {
@@ -70,6 +78,103 @@ function pidAlive(pid) {
     // this plugin's server either way.
     return error?.code === 'EPERM'
   }
+}
+
+/**
+ * Read a process's command line.
+ *
+ * @param {number} pid - Process id to inspect.
+ * @returns {Promise<string | null>} The command line, or null when it is gone.
+ */
+function processCommand(pid) {
+  return new Promise((resolve) => {
+    execFile('ps', ['-p', String(pid), '-o', 'command='], (error, stdout) => {
+      if (error) resolve(null)
+      else resolve(String(stdout).trim() || null)
+    })
+  })
+}
+
+/**
+ * Tell whether a command line is a classic server launched the way this plugin
+ * launches one.
+ *
+ * The launcher may rewrite the executable path (`Contents/Resources/../MacOS/…`
+ * instead of the configured `cliPath`), so the marker is the desktop host entry
+ * point or the `dsh` binary name, not `config.cliPath`. Both flags must match:
+ * they carry this plugin's profile and port, which keeps the check from
+ * matching an unrelated `dsh` process that happens to share the profile.
+ *
+ * @param {string | null} command - Command line from `processCommand`.
+ * @param {{ cliPath: string, profile: string, port: number }} config - Launch settings.
+ * @returns {boolean} True when the command line names this plugin's server.
+ */
+function isClassicServer(command, config) {
+  if (!command) return false
+  const profileFlag = `--profile ${config.profile}`
+  const portFlag = `--port ${config.port}`
+  const harness =
+    command.includes('DeepSeek Harness') ||
+    command.includes(config.cliPath) ||
+    command.includes('dsh-desktop-host') ||
+    /(^|\/)dsh( |$)/.test(command)
+  return harness && command.includes(profileFlag) && command.includes(portFlag)
+}
+
+/**
+ * Wait for a short while.
+ *
+ * @param {number} ms - Milliseconds to wait.
+ * @returns {Promise<void>} Resolves after the delay.
+ */
+function sleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms)
+  })
+}
+
+/**
+ * Stop a leftover classic server recorded by an earlier host process.
+ *
+ * Only a process whose command line matches this plugin's profile and port is
+ * signalled; anything else is reported back and left running, because a stale
+ * pid may have been reused by an unrelated process.
+ *
+ * @param {object} config - Resolved plugin config.
+ * @param {{ pid: number }} state - Recorded state from a previous host process.
+ * @returns {Promise<{ stopped: true } | { stopped: false, reason: string }>}
+ *   Whether the leftover server was stopped, and why not when it was not.
+ */
+async function stopLeftoverServer(config, state) {
+  if (!pidAlive(state.pid)) return { stopped: false, reason: 'already gone' }
+  const command = await processCommand(state.pid)
+  if (!isClassicServer(command, config)) {
+    return {
+      stopped: false,
+      reason: `进程 ${state.pid} 的命令行不属于本插件的经典模式实例，已跳过清理：${command ?? '无法读取'}`,
+    }
+  }
+  try {
+    process.kill(state.pid, 'SIGTERM')
+  } catch (error) {
+    if (error?.code !== 'ESRCH') throw error
+    return { stopped: false, reason: 'already gone' }
+  }
+  const deadline = Date.now() + 5000
+  while (Date.now() < deadline && pidAlive(state.pid)) {
+    await sleep(150)
+  }
+  if (pidAlive(state.pid)) {
+    try {
+      process.kill(state.pid, 'SIGKILL')
+    } catch (error) {
+      if (error?.code !== 'ESRCH') throw error
+    }
+    await sleep(150)
+  }
+  return pidAlive(state.pid)
+    ? { stopped: false, reason: `进程 ${state.pid} 未能在 SIGKILL 后退出` }
+    : { stopped: true }
 }
 
 /**
@@ -176,14 +281,28 @@ async function handleOpen(config, res) {
   }
 
   const state = await readState()
+  let leftoverNote
   if (state?.url && pidAlive(state.pid)) {
-    try {
-      await openInBrowser(config.browser, state.url)
-      send(200, { ok: true, started: false, url: state.url })
-    } catch (error) {
-      send(500, { ok: false, error: `无法调用 ${config.browser}：${error.message}` })
+    if (state.hostPid === process.pid) {
+      try {
+        await openInBrowser(config.browser, state.url)
+        send(200, { ok: true, started: false, url: state.url })
+      } catch (error) {
+        send(500, { ok: false, error: `无法调用 ${config.browser}：${error.message}` })
+      }
+      return
     }
-    return
+    // Started by an earlier host process: it still holds the sessions it has
+    // open, so it is stopped before a fresh one is started.
+    const stopped = await stopLeftoverServer(config, state)
+    if (!stopped.stopped) {
+      send(409, {
+        ok: false,
+        error: `上次运行留下的经典模式实例仍在运行，且无法清理（${stopped.reason}）。请手动结束进程 ${state.pid} 后重试。`,
+      })
+      return
+    }
+    leftoverNote = `已清理上次运行留下的实例（PID ${state.pid}）。`
   }
 
   try {
@@ -195,7 +314,8 @@ async function handleOpen(config, res) {
       return
     }
     const started = await startServer(config)
-    await writeState({ ...started, startedAt: new Date().toISOString() })
+    await writeState({ ...started, hostPid: process.pid, startedAt: new Date().toISOString() })
+    const extra = leftoverNote ? { note: leftoverNote } : {}
     try {
       await openInBrowser(config.browser, started.url)
     } catch (error) {
@@ -204,13 +324,32 @@ async function handleOpen(config, res) {
         started: true,
         url: started.url,
         warning: `已启动，但无法调用 ${config.browser}：${error.message}`,
+        ...extra,
       })
       return
     }
-    send(200, { ok: true, started: true, url: started.url })
+    send(200, { ok: true, started: true, url: started.url, ...extra })
   } catch (error) {
     send(504, { ok: false, error: String(error?.message ?? error) })
   }
+}
+
+/**
+ * Stop a leftover classic server at host boot, before the button is used.
+ *
+ * Without this, a server started by the previous host process keeps running
+ * after a restart and keeps the sessions it has open locked, so another DSH
+ * instance reports those sessions as already in use until someone clicks the
+ * button.
+ *
+ * @param {object} config - Resolved plugin config.
+ * @returns {Promise<void>} Resolves once the check finished.
+ */
+async function reapLeftover(config) {
+  const state = await readState()
+  if (!state || state.hostPid === process.pid) return
+  if (!pidAlive(state.pid)) return
+  await stopLeftoverServer(config, state)
 }
 
 /**
@@ -272,5 +411,8 @@ export function apply(ctx, config = {}) {
   }
   ctx.inject(['webServer'], (scope) => {
     mountRoute(scope, resolved)
+    // A failure here must not stop the button from mounting: the same check
+    // runs again on every click.
+    void reapLeftover(resolved).catch(() => {})
   })
 }
