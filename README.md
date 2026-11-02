@@ -9,7 +9,7 @@ A DeepSeek Harness (DSH) bundle that adds a **Classic mode** button to the Web U
 DS Bot mode and classic Agent mode share one data directory (`~/.dsh`) but render different UIs. DS Bot mode has no right-hand sidebar, so UI work needs the classic shell; the classic shell needs a separate running instance. This bundle removes the manual step of starting that instance and pasting its tokenized URL into a browser.
 
 - **Host half** (`index.js`): reads `~/.dsh/classic-mode/state.json`, reuses a live process started by this same host, otherwise spawns `dsh --profile <profile> --no-open --port <port>`, captures the `?token=` URL from its output, writes state, and opens the browser. It also stops a server left over from a previous host run (see [Stale instance cleanup](#stale-instance-cleanup)).
-- **Client half** (`client.js`): registers a button in the `sidebar.footer.action` slot using the official DeepSeek fish logo, matching the DS Bot entry. The button calls `GET /classic-mode/open`. It shows only on the DS Bot page: opening DSH already lands on the classic UI, so there the button would duplicate the page in front of the user. It follows ds-bot's stored surface mode (`localStorage["ds-bot:surface"]`) and appears in profiles without ds-bot.
+- **Client half** (`client.js`): registers a button in the `sidebar.footer.action` slot using the official DeepSeek fish logo, matching the DS Bot entry. The button calls `GET /classic-mode/open`. It shows on every page, the classic Agent page and the DS Bot page alike, and needs no ds-bot.
 
 ## Requirements
 
@@ -81,7 +81,7 @@ A process is only signalled when its command line carries this plugin's `profile
 
 这个插件在 DSH 网页版侧栏加一个「经典模式」按钮。点击后：若 classic 实例未运行，就启动 `dsh --profile classic --no-open --port 3090`，从输出里取出带 token 的地址，再用 Safari 打开；已在运行则直接复用。
 
-按钮只在 DS Bot 页面出现。打开 DSH 时本来就是经典页面，放在那里会重复用户眼前的界面。插件读取 ds-bot 保存的界面模式（`localStorage["ds-bot:surface"]`）判断；没有装 ds-bot 的 profile 一律显示。
+按钮在两类页面都显示：经典 Agent 页和 DS Bot 页，且不依赖 ds-bot。
 
 配置项：`cliPath`（必填，dsh 启动器绝对路径）、`profile`（默认 `classic`）、`port`（默认 `3090`）、`browser`（默认 `Safari`）。仓库里的 `cordis.patch.yml` 只放占位值，请在你自己的 profile 补丁里按上面的 `id: local-classic-mode` 覆盖配置，避免把本机路径写进仓库。
 
