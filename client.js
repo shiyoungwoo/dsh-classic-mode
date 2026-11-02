@@ -43,6 +43,24 @@ window.__ModuleLoader__.load({
     var MARK_INK = '#4D6BFE';
     var MARK_SIZE = 20;
 
+    // DS Bot keeps its surface mode in this localStorage key ("agent" | "bot");
+    // anything else (including a profile without ds-bot) means the classic UI is
+    // not the page in front of the user, so the entry belongs in the sidebar.
+    var SURFACE_KEY = 'ds-bot:surface';
+
+    /**
+     * Read the current DS Bot surface mode.
+     *
+     * @returns {string|null} 'agent', 'bot', or null when ds-bot never wrote one.
+     */
+    function readSurfaceMode() {
+      try {
+        return window.localStorage.getItem(SURFACE_KEY);
+      } catch (error) {
+        return null;
+      }
+    }
+
     /**
      * One sidebar-foot button that opens the classic UI.
      *
@@ -53,6 +71,25 @@ window.__ModuleLoader__.load({
       var react = require('react');
       var ui = require('@deepseek-ai/dsh-client-ui-primitives');
       var wide = !!(props && props.wide);
+
+      // ds-bot swaps surfaces without any slot prop, so follow its stored mode.
+      var surface = react.useState(readSurfaceMode());
+      var mode = surface[0];
+      var setMode = surface[1];
+
+      react.useEffect(function () {
+        var sync = function () {
+          setMode(readSurfaceMode());
+        };
+        var timer = setInterval(sync, 500);
+        window.addEventListener('storage', sync);
+        window.addEventListener('focus', sync);
+        return function () {
+          clearInterval(timer);
+          window.removeEventListener('storage', sync);
+          window.removeEventListener('focus', sync);
+        };
+      }, []);
 
       var state = react.useState(IDLE);
       var phase = state[0];
@@ -101,6 +138,10 @@ window.__ModuleLoader__.load({
         },
         [phase],
       );
+
+      // Agent mode is the classic UI itself, so the button would only duplicate
+      // the page the user is already looking at; it belongs on the DS Bot page.
+      if (mode === 'agent') return null;
 
       var style = {
         display: 'inline-flex',
