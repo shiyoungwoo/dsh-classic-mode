@@ -163,7 +163,7 @@ window.__ModuleLoader__.load({
         ref: launcher,
         popover: 'manual',
         className: 'classic-mode-launcher',
-        'data-classic-mode-version': '0.1.4',
+        'data-classic-mode-version': '0.1.5',
         style: {
           position: 'fixed',
           inset: 'auto',
@@ -172,11 +172,11 @@ window.__ModuleLoader__.load({
           border: 0,
           background: 'transparent',
           overflow: 'visible',
-          left: 76,
-          bottom: 'max(18px, env(safe-area-inset-bottom))',
+          left: 150,
+          bottom: 'max(12px, env(safe-area-inset-bottom))',
           zIndex: 40,
           pointerEvents: 'auto',
-          maxWidth: 'calc(100vw - 92px)',
+          maxWidth: 'calc(100vw - 166px)',
         },
       }, react.createElement(ClassicModeButton, { wide: true }));
     }
