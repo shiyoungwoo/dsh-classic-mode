@@ -1,6 +1,6 @@
 # dsh-classic-mode
 
-A DeepSeek Harness (DSH) bundle that adds a **Classic mode** button to the Web UI sidebar. One click starts the `classic` profile — a DSH instance without the DS Bot team layer — and opens it in Safari, reusing the already running instance when one exists.
+A DeepSeek Harness (DSH) bundle that adds a **Classic mode** launcher at the lower-left of the Web UI. One click starts the `classic` profile — a DSH instance without the DS Bot team layer — and opens it in Safari, reusing the already running instance when one exists.
 
 [中文说明](#中文说明)
 
@@ -9,11 +9,12 @@ A DeepSeek Harness (DSH) bundle that adds a **Classic mode** button to the Web U
 DS Bot mode and classic Agent mode share one data directory (`~/.dsh`) but render different UIs. DS Bot mode has no right-hand sidebar, so UI work needs the classic shell; the classic shell needs a separate running instance. This bundle removes the manual step of starting that instance and pasting its tokenized URL into a browser.
 
 - **Host half** (`index.js`): reads `~/.dsh/classic-mode/state.json`, reuses a live process started by this same host, otherwise spawns `dsh --profile <profile> --no-open --port <port>`, captures the `?token=` URL from its output, writes state, and opens the browser. It also stops a server left over from a previous host run (see [Stale instance cleanup](#stale-instance-cleanup)).
-- **Client half** (`client.js`): registers a button in the `sidebar.footer.action` slot using the official DeepSeek fish logo, matching the DS Bot entry. The button calls `GET /classic-mode/open`. It shows on every page, the classic Agent page and the DS Bot page alike, and needs no ds-bot.
+- **Client half** (`client.js`): registers a lower-left launcher in `shell.overlay` and renders it in the browser's native popover top layer. This keeps it above both the classic sidebar and DS Bot's independent sidebar, including when the shell overlay itself has a lower stacking order. The official DeepSeek fish artwork is embedded; no private Harness Client module is imported. The button calls `GET /classic-mode/open` and remains visible on both pages without depending on ds-bot or its stored surface mode.
 
 ## Requirements
 
 - DSH `>=0.2.1-rc.3 <0.3.0` (Web or Desktop), Node `>=22.19`.
+- A browser with the Popover API (`HTMLElement.showPopover`); the bundled Desktop Chromium used for verification supports it.
 - A second DSH profile that contains the classic composition (default name `classic`).
 - macOS, for `open -a <browser>`. On other platforms, point `browser` at a launcher you have, or read the returned `url` yourself.
 
@@ -79,9 +80,9 @@ A process is only signalled when its command line carries this plugin's `profile
 
 ## 中文说明
 
-这个插件在 DSH 网页版侧栏加一个「经典模式」按钮。点击后：若 classic 实例未运行，就启动 `dsh --profile classic --no-open --port 3090`，从输出里取出带 token 的地址，再用 Safari 打开；已在运行则直接复用。
+这个插件在 DSH 窗口左下角加一个「经典模式」按钮。点击后：若 classic 实例未运行，就启动 `dsh --profile classic --no-open --port 3090`，从输出里取出带 token 的地址，再用 Safari 打开；已在运行则直接复用。
 
-按钮在两类页面都显示：经典 Agent 页和 DS Bot 页，且不依赖 ds-bot。
+按钮固定在窗口左下角，由应用级 `shell.overlay` 挂载，并使用浏览器原生 Popover 顶层显示在经典 Agent 侧栏与 DS Bot 独立侧栏上方。浏览器需支持 `HTMLElement.showPopover`。两类页面均可使用，不依赖 ds-bot 的页面状态或内部模块。鲸鱼图形直接内嵌，避免加载私有 UI 组件。
 
 配置项：`cliPath`（必填，dsh 启动器绝对路径）、`profile`（默认 `classic`）、`port`（默认 `3090`）、`browser`（默认 `Safari`）。仓库里的 `cordis.patch.yml` 只放占位值，请在你自己的 profile 补丁里按上面的 `id: local-classic-mode` 覆盖配置，避免把本机路径写进仓库。
 
